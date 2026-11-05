@@ -1,0 +1,16 @@
+[project]
+name = "eris"
+version = "0.1.0"
+description = "以文字互动为核心的虚拟角色恋爱模拟器"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "openai>=2.0.0,<3.0.0",
+  "python-dotenv>=1.0.0,<2.0.0",
+  "streamlit>=1.40.0,<2.0.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
