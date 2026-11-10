@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { chatRequestSchema } from "@/lib/chat";
@@ -19,6 +20,22 @@ function isHighRisk(text: string): boolean {
 }
 
 export async function POST(request: Request) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !publishableKey) {
+    return NextResponse.json({ error: "账号服务尚未配置，请先连接 Supabase。" }, { status: 503 });
+  }
+  const authorization = request.headers.get("authorization") || "";
+  const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  if (!token) return NextResponse.json({ error: "请先注册或登录。" }, { status: 401 });
+  try {
+    const db = createClient(url, publishableKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+    const { data, error } = await db.auth.getUser(token);
+    if (error || !data.user || data.user.is_anonymous) return NextResponse.json({ error: "登录已失效，请重新登录。" }, { status: 401 });
+  } catch {
+    return NextResponse.json({ error: "暂时无法验证账号，请稍后重试。" }, { status: 503 });
+  }
+
   try {
     const rawBody = await request.text();
     if (rawBody.length > 50000) return NextResponse.json({ error: "请求内容过长。" }, { status: 413 });

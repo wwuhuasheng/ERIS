@@ -5,7 +5,7 @@ import { initialState, type SceneState } from "./state";
 
 export type StoredMessage = Message & { state?: SceneState; turningPoint?: boolean };
 
-type StoredSession = {
+export type StoredSession = {
   scenarioId: string;
   sessionId: string;
   scenario: Scenario;
@@ -14,27 +14,27 @@ type StoredSession = {
   status: "active" | "paused" | "completed";
 };
 
+export type StoredSessionSummary = { id: string; title: string; status: StoredSession["status"]; createdAt: string };
+
 let browserClient: SupabaseClient | null = null;
 
 export function persistenceConfigured(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
 }
 
-function client(): SupabaseClient {
-  if (!persistenceConfigured()) throw new Error("尚未配置 Supabase；当前对话仅保存在页面内存中。");
+export function authClient(): SupabaseClient {
+  if (!persistenceConfigured()) throw new Error("尚未配置 Supabase；无法注册、登录或保存历史记录。");
   if (!browserClient) browserClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
-    auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
+    auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true },
   });
   return browserClient;
 }
 
 async function identity(): Promise<{ db: SupabaseClient; ownerId: string }> {
-  const db = client();
-  const { data: current, error: currentError } = await db.auth.getUser();
-  if (currentError && currentError.name !== "AuthSessionMissingError") throw currentError;
-  if (current.user) return { db, ownerId: current.user.id };
-  const { data, error } = await db.auth.signInAnonymously();
-  if (error || !data.user) throw error || new Error("无法创建匿名会话。");
+  const db = authClient();
+  const { data, error } = await db.auth.getUser();
+  if (error) throw error;
+  if (!data.user || data.user.is_anonymous) throw new Error("请先注册或登录，才能保存和查看个人记录。");
   return { db, ownerId: data.user.id };
 }
 
@@ -77,9 +77,27 @@ export async function createStoredSession(scenario: Scenario): Promise<StoredSes
   return { scenarioId: scene.data.id, sessionId: session.data.id, scenario, messages: [], state: initialState, status: "active" };
 }
 
-export async function loadLatestSession(): Promise<StoredSession | null> {
+export async function listStoredSessions(): Promise<StoredSessionSummary[]> {
   const { db } = await identity();
-  const session = await db.from("sessions").select("id,scenario_id,mode,status").in("status", ["active", "paused"]).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const sessions = await db.from("sessions").select("id,scenario_id,status,created_at").order("created_at", { ascending: false }).limit(50);
+  if (sessions.error) throw sessions.error;
+  const rows = sessions.data || [];
+  if (!rows.length) return [];
+  const scenarioIds = [...new Set(rows.map((row) => row.scenario_id))];
+  const scenes = await db.from("scenarios").select("id,title").in("id", scenarioIds);
+  if (scenes.error) throw scenes.error;
+  const titles = new Map((scenes.data || []).map((scene) => [scene.id, scene.title]));
+  return rows.map((row) => ({
+    id: row.id as string,
+    title: titles.get(row.scenario_id) || "未命名情境",
+    status: row.status as StoredSession["status"],
+    createdAt: row.created_at as string,
+  }));
+}
+
+export async function loadStoredSession(sessionId: string): Promise<StoredSession | null> {
+  const { db } = await identity();
+  const session = await db.from("sessions").select("id,scenario_id,mode,status").eq("id", sessionId).maybeSingle();
   if (session.error) throw session.error;
   if (!session.data) return null;
   const [scene, messages, states, points] = await Promise.all([
@@ -100,6 +118,13 @@ export async function loadLatestSession(): Promise<StoredSession | null> {
     state: latestState,
     status: session.data.status as StoredSession["status"],
   };
+}
+
+export async function loadLatestSession(): Promise<StoredSession | null> {
+  const { db } = await identity();
+  const session = await db.from("sessions").select("id").in("status", ["active", "paused"]).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (session.error) throw session.error;
+  return session.data ? loadStoredSession(session.data.id) : null;
 }
 
 export async function storeMessage(sessionId: string, message: Message, sequenceNo: number): Promise<void> {

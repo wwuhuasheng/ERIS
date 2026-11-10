@@ -1,13 +1,15 @@
 "use client";
 
+import Link from "next/link";
+import type { User } from "@supabase/supabase-js";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { ChatRequest, Message, ModelReply } from "@/lib/chat";
 import { blankScenario, fixedScenario, modeLabels, scenarioHints, scenarioSchema, styleLabels, templates, toPerspectiveScenario, type Scenario } from "@/lib/scenario";
 import { initialState, stateDescription, type SceneState } from "@/lib/state";
-import { createBranch, createPerspectiveSession, createStoredSession, deleteStoredScenario, loadLatestSession, persistenceConfigured, setSessionStatus, storeMessage, storeReplyState, updateScenarioIntensity, saveSessionEnding } from "@/lib/persistence";
+import { authClient, createBranch, createPerspectiveSession, createStoredSession, deleteStoredScenario, listStoredSessions, loadLatestSession, loadStoredSession, persistenceConfigured, setSessionStatus, storeMessage, storeReplyState, updateScenarioIntensity, saveSessionEnding, type StoredSession, type StoredSessionSummary } from "@/lib/persistence";
 import { buildReflection } from "@/lib/reflection";
 
-type Step = "welcome" | "create" | "confirm" | "chat" | "landing";
+type Step = "welcome" | "create" | "confirm" | "chat" | "landing" | "history";
 type Access = ChatRequest["access"];
 type Turn = Message & { emotion?: string; move?: string; turningPoint?: boolean; state?: SceneState };
 
@@ -21,7 +23,115 @@ function field(label: string, value: string, onChange: (value: string) => void, 
     : <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={options?.placeholder} required={options?.required} minLength={options?.min} maxLength={options?.max} />}</label>;
 }
 
+type AuthStatus = "loading" | "guest" | "ready" | "unconfigured";
+type AuthMode = "login" | "register";
+
 export default function HomePage() {
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [user, setUser] = useState<User | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
+
+  useEffect(() => {
+    if (!persistenceConfigured()) {
+      setAuthStatus("unconfigured");
+      return;
+    }
+    const db = authClient();
+    const { data: { subscription } } = db.auth.onAuthStateChange((event, session) => {
+      if (event !== "INITIAL_SESSION" && event !== "SIGNED_IN" && event !== "SIGNED_OUT") return;
+      const activeUser = session?.user && !session.user.is_anonymous ? session.user : null;
+      setUser(activeUser);
+      setAuthStatus(activeUser ? "ready" : "guest");
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (authBusy) return;
+    if (authMode === "register" && password !== confirmPassword) {
+      setAuthError("两次输入的密码不一致。");
+      return;
+    }
+    setAuthBusy(true);
+    setAuthError("");
+    setAuthNotice("");
+    try {
+      const db = authClient();
+      if (authMode === "register") {
+        const { data, error } = await db.auth.signUp({
+          email: email.trim(),
+          password,
+          options: { emailRedirectTo: window.location.origin },
+        });
+        if (error) throw error;
+        setPassword("");
+        setConfirmPassword("");
+        if (!data.session) {
+          setAuthMode("login");
+          setAuthNotice("注册申请已提交。请查收验证邮件，确认后返回登录。");
+        } else if (data.user && !data.user.is_anonymous) {
+          setUser(data.user);
+          setAuthStatus("ready");
+        }
+      } else {
+        const { data, error } = await db.auth.signInWithPassword({ email: email.trim(), password });
+        if (error) throw error;
+        setPassword("");
+        if (!data.user.is_anonymous) {
+          setUser(data.user);
+          setAuthStatus("ready");
+        }
+      }
+    } catch (cause) {
+      setAuthError(cause instanceof Error ? cause.message : "账号操作失败，请重试。");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function signOut() {
+    const { error } = await authClient().auth.signOut({ scope: "local" });
+    if (error) {
+      window.alert("退出失败，请重试。");
+      return;
+    }
+    setUser(null);
+    setAuthStatus("guest");
+  }
+
+  if (authStatus === "ready" && user) {
+    return <Experience key={user.id} userEmail={user.email || "已登录"} onSignOut={signOut} />;
+  }
+
+  return <main className="shell">
+    <header className="site-header"><Link className="brand" href="/">✳ <span>ERIS</span></Link><span className="header-note">给未说出口的话，一个可重来的空间</span><span className="phase">账号入口</span></header>
+    <section className="panel narrow auth-panel">
+      <div className="eyebrow">WELCOME TO ERIS</div>
+      {authStatus === "loading" ? <><h1>正在确认账号…</h1><p className="muted">请稍候。</p></> :
+        authStatus === "unconfigured" ? <><h1>先连接账号服务</h1><p className="lead">正式注册和个人历史记录需要 Supabase。请先在 .env.local 中填写 NEXT_PUBLIC_SUPABASE_URL 与 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY，然后重启应用。</p><Link className="text-button" href="/about">查看简介 →</Link></> :
+        <><h1>{authMode === "login" ? "欢迎回来。" : "创建你的账号。"}</h1><p className="lead">登录后，你可以选择使用项目测试账号或自己的 DeepSeek API。对话历史会保存在你的账号下。</p>
+          <div className="auth-tabs"><button type="button" aria-pressed={authMode === "login"} onClick={() => { setAuthMode("login"); setAuthError(""); setAuthNotice(""); }}>登录</button><button type="button" aria-pressed={authMode === "register"} onClick={() => { setAuthMode("register"); setAuthError(""); setAuthNotice(""); }}>注册</button></div>
+          <form className="scenario-form" onSubmit={submitAuth}>
+            <label className="field"><span>邮箱</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label>
+            <label className="field"><span>密码</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={authMode === "login" ? "current-password" : "new-password"} minLength={authMode === "register" ? 8 : undefined} required /></label>
+            {authMode === "register" && <label className="field"><span>确认密码</span><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={8} required /></label>}
+            {authError && <p className="error" role="alert">{authError}</p>}
+            {authNotice && <p className="auth-notice" role="status">{authNotice}</p>}
+            <button className="primary" disabled={authBusy}>{authBusy ? "请稍候…" : authMode === "login" ? "登录并继续 →" : "注册账号 →"}</button>
+          </form><Link className="text-button auth-about" href="/about">先看简介 →</Link></>}
+    </section>
+    <footer>ERIS · 一种可能性，不是现实预测。若你或他人正处于危险，请联系当地紧急服务或可信任的人。</footer>
+  </main>;
+}
+
+function Experience({ userEmail, onSignOut }: { userEmail: string; onSignOut: () => Promise<void> }) {
   const [step, setStep] = useState<Step>("welcome");
   const [scenario, setScenario] = useState<Scenario>(fixedScenario);
   const scenarioDrafts = useRef<Partial<Record<Scenario["template"], Scenario>>>({});
@@ -46,6 +156,10 @@ export default function HomePage() {
   const [pending, setPending] = useState<Turn | null>(null);
   const [storageError, setStorageError] = useState("");
   const [userFeeling, setUserFeeling] = useState("");
+  const [historyEntries, setHistoryEntries] = useState<StoredSessionSummary[]>([]);
+  const [selectedHistory, setSelectedHistory] = useState<StoredSession | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const stepBeforeHistory = useRef<Step>("welcome");
 
   useEffect(() => {
     if (!persistenceConfigured()) return;
@@ -59,7 +173,7 @@ export default function HomePage() {
       setSceneState(stored.state);
       const last = stored.messages.at(-1);
       if (last?.role === "user") { setPending(last); setDraft(last.content); }
-      setStep(stored.status === "paused" ? "landing" : "chat");
+      setStep((current) => current === "history" ? current : stored.status === "paused" ? "landing" : "chat");
     }).catch((cause) => { if (!cancelled) setStorageError(cause instanceof Error ? cause.message : "无法恢复上次的对话。"); });
     return () => { cancelled = true; };
   }, []);
@@ -158,7 +272,7 @@ export default function HomePage() {
       : { kind: "own", apiKey: apiKey.trim(), model: ownModel };
     if (access.kind === "test" && (!access.username || !access.passphrase)) {
       setAccessOpen(true);
-      setError("请填写测试账号和暗号，或切换为自己的 API。");
+      setError("请输入测试账号和暗号，或切换为自己的 API。");
       return;
     }
     if (access.kind === "own" && !access.apiKey) {
@@ -176,9 +290,11 @@ export default function HomePage() {
         setPending(userMessage);
         setMessages(nextMessages);
       }
+      const { data: authData } = await authClient().auth.getSession();
+      if (!authData.session || authData.session.user.is_anonymous) throw new Error("登录已失效，请重新登录。");
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + authData.session.access_token },
         body: JSON.stringify({ scenario, state: sceneState, messages: nextMessages.map(({ id, role, content }) => ({ id, role, content })), access }),
       });
       const result = await response.json();
@@ -295,20 +411,58 @@ export default function HomePage() {
     setStep(status === "active" ? "chat" : status === "paused" ? "landing" : "welcome");
   }
 
+  async function openHistory() {
+    if (step === "history") return;
+    stepBeforeHistory.current = step;
+    setSelectedHistory(null);
+    setHistoryBusy(true);
+    setStorageError("");
+    setStep("history");
+    try {
+      setHistoryEntries(await listStoredSessions());
+    } catch (cause) {
+      setStorageError(cause instanceof Error ? cause.message : "历史记录读取失败。");
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
+  async function viewHistory(sessionId: string) {
+    setHistoryBusy(true);
+    setStorageError("");
+    try {
+      const stored = await loadStoredSession(sessionId);
+      if (!stored) throw new Error("这段记录不存在或你没有查看权限。");
+      setSelectedHistory(stored);
+    } catch (cause) {
+      setStorageError(cause instanceof Error ? cause.message : "对话读取失败。");
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
   return <main className="shell">
-    <header className="site-header"><button className="brand" onClick={() => setStep("welcome")}>✳ <span>ERIS</span></button><span className="header-note">给未说出口的话，一个可重来的空间</span><span className="phase">情境练习</span></header>
+    <header className="site-header"><button className="brand" onClick={() => setStep("welcome")}>✳ <span>ERIS</span></button><span className="header-note">给未说出口的话，一个可重来的空间</span><div className="header-actions"><button type="button" onClick={() => void openHistory()}>历史记录</button><span className="account-email" title={userEmail}>{userEmail}</span><button type="button" onClick={() => void onSignOut()}>退出</button></div></header>
 
     {step === "welcome" && <section className="hero">{storageError && <p className="error" role="alert">{storageError}</p>}
       <div className="eyebrow">RELATIONSHIP SIMULATION · 关系情境模拟</div>
       <h1>那些没能说出口的话，<br /><em>可以先在这里说。</em></h1>
       <p>与拥有自己立场的虚构角色进行一段困难对话。你可以表达、争辩、暂停，也可以试试另一种说法。</p>
       <div className="hero-actions"><button className="primary" onClick={() => { setScenario(fixedScenario); setEditingSession(false); setStep("confirm"); }}>试试固定场景 <span>→</span></button><button className="secondary" onClick={createScenario}>创建我的场景</button></div>
-      <div className="hero-cards">
-        <div><span>01</span><div><strong>把话说出来</strong><p>不必一次说对。</p></div></div>
-        <div><span>02</span><div><strong>允许有分歧</strong><p>对方也有自己的立场。</p></div></div>
-        <div><span>03</span><div><strong>随时可以停下</strong><p>节奏始终由你决定。</p></div></div>
-      </div>
+      <Link href="/about" className="intro-link"><span>简介</span><span aria-hidden="true">→</span></Link>
       <p className="disclaimer">这是 AI 生成的可能情境，不代表现实人物的想法，也不提供心理诊断或治疗。</p>
+    </section>}
+
+    {step === "history" && <section className="panel narrow history-panel">
+      <div className="eyebrow">MY CONVERSATIONS · 我的记录</div>
+      <h1>{selectedHistory ? selectedHistory.scenario.title : "历史对话"}</h1>
+      <p className="muted">这里显示当前账号最近 50 段对话。只有这个账号可以读取自己的记录。</p>
+      {storageError && <p className="error" role="alert">{storageError}</p>}
+      {historyBusy ? <p className="muted">正在读取…</p> : selectedHistory ?
+        <div className="history-transcript">{selectedHistory.messages.length ? selectedHistory.messages.map((message) => <div className={"history-message " + message.role} key={message.id}><small>{message.role === "user" ? "你" : selectedHistory.scenario.otherRole}</small><p>{message.content}</p></div>) : <p className="muted">这段对话还没有消息。</p>}</div> :
+        historyEntries.length ? <div className="history-list">{historyEntries.map((item) => <button type="button" key={item.id} onClick={() => void viewHistory(item.id)}><span><strong>{item.title}</strong><small>{new Date(item.createdAt).toLocaleString("zh-CN")} · {item.status === "active" ? "进行中" : item.status === "paused" ? "已暂停" : "已完成"}</small></span><span aria-hidden="true">→</span></button>)}</div> :
+          <p className="muted">还没有历史记录。开始一段对话后，这里会出现你的记录。</p>}
+      <div className="row"><button className="text-button" type="button" onClick={() => selectedHistory ? setSelectedHistory(null) : setStep(stepBeforeHistory.current)}>← {selectedHistory ? "返回记录列表" : "返回"}</button></div>
     </section>}
 
     {step === "create" && <section className="panel narrow"><div className="eyebrow">01 / {editingSession ? "修改场景" : "创建场景"}</div><h1>把你的情境，写成一段可探索的对话。</h1><p className="muted">选择模板后填写自己的故事；切换模板会保留各自的草稿。请勿输入身份证号、住址等敏感资料。</p>
@@ -335,7 +489,7 @@ export default function HomePage() {
     {step === "chat" && <section className="chat-layout"><aside className="chat-sidebar"><details className="scene-note"><summary><span className="eyebrow">这段情境</span><strong>{scenario.title}</strong></summary><p>{scenario.background}</p><p className="scene-status">{modeLabels[scenario.mode]} · 第 {userTurnCount} / 15 轮 · {stateDescription(sceneState)}</p><div className="scene-controls"><label className="field"><span>对话强度</span><select value={scenario.intensity} onChange={(e) => updateScenario("intensity", Number(e.target.value))}><option value={1}>轻 · 保留余地</option><option value={2}>中 · 有分歧</option><option value={3}>强 · 更直接</option></select></label><div className="scene-controls-actions"><button className="text-button" onClick={editScenario}>编辑场景</button><button className="text-button" onClick={removeCurrent}>删除这段对话</button></div></div></details></aside>
       <div className="chat-main"><div className="chat-top"><div className="chat-persona"><span className="avatar" aria-hidden="true">{scenario.otherRole.trim().slice(-1) || "人"}</span><div><strong>{scenario.otherRole}</strong><span>一段可能发生的对话</span></div></div><button className="pause-button" onClick={() => changeStatus("paused")}>暂停对话</button></div>
         <div className="messages" aria-live="polite">{messages.length === 0 && <div className="opening"><span className="opening-mark">✳</span><p>从你想说的那句话开始。</p><span>{scenario.otherRole} 会以自己的立场回应。你不必把话说得很完整。</span></div>}{messages.map((message) => <div className={"message-row " + message.role} key={message.id}>{message.role === "assistant" && <span className="message-avatar" aria-hidden="true">{scenario.otherRole.trim().slice(-1) || "人"}</span>}<div className={"message " + message.role}><small>{message.role === "user" ? "你" : scenario.otherRole}</small><p>{message.content}</p></div></div>)}{busy && <div className="message-row assistant"><span className="message-avatar" aria-hidden="true">{scenario.otherRole.trim().slice(-1) || "人"}</span><div className="message assistant loading"><small>{scenario.otherRole}</small><p>正在想怎么说<span className="typing-dots" aria-hidden="true">···</span></p></div></div>}</div>
-        <div className="composer-area">{storageError && <p className="error" role="alert">{storageError}</p>}{safety && <div className="safety" role="alert">{safety}<button onClick={() => setSafety("")}>关闭</button></div>}{error && <p className="error" role="alert">{error} 输入已保留，可以重试。</p>}
+        <div className="composer-area">{storageError && <p className="error" role="alert">{storageError}</p>}{safety && <div className="safety" role="alert">{safety}<button onClick={() => setSafety("")}>关闭</button></div>}{error && <p className="error" role="alert">{error}{error.includes("保留") ? "" : "当前记录保留，请重试。"}</p>}
           <form onSubmit={send}><textarea value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="你想怎么说，就怎么说…" maxLength={2000} rows={2} disabled={busy || (userTurnCount >= 15 && !pending) || !!pending} aria-label="你想说的话" /><div className="composer-bottom"><small>只是模拟，你随时可以停下来。</small><button className="primary" type="submit" disabled={busy || !draft.trim() || (userTurnCount >= 15 && !pending)}>{busy ? "等待回应…" : pending ? "重试这句 ↗" : "发出这句 ↗"}</button></div></form>{userTurnCount >= 15 && <p className="muted">这段对话暂时到这里。你可以暂停并回看。</p>}
           <details className="access" open={accessOpen} onToggle={(event) => setAccessOpen(event.currentTarget.open)}><summary>对话接入 <span>{accessKind === "test" ? "固定测试账号" : "自己的 DeepSeek API"}</span></summary><div className="access-options"><label><input type="radio" checked={accessKind === "test"} onChange={() => setAccessKind("test")} /> 固定测试账号</label><label><input type="radio" checked={accessKind === "own"} onChange={() => setAccessKind("own")} /> 自行配置 DeepSeek API</label></div>{accessKind === "test" ? <div className="two-cols">{field("测试账号", username, setUsername, { max: 100 })}<label className="field"><span>测试暗号</span><input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} autoComplete="off" maxLength={200} /></label></div> : <div className="two-cols"><label className="field"><span>DeepSeek API Key</span><input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" /></label><label className="field"><span>模型</span><select value={ownModel} onChange={(e) => setOwnModel(e.target.value as typeof ownModel)}><option value="deepseek-flash">deepseek-flash</option><option value="deepseek-v4-pro">deepseek-v4-pro</option></select></label></div>}<p className="muted">凭据仅用于这次对话，不会保存在页面记录里。</p></details></div>
       </div></section>}

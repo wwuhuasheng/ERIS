@@ -15,13 +15,15 @@ ERIS 是一款面向情绪表达、关系冲突与困难沟通的 AI 情境模�
 
 ## 产品体验
 
-首页可直接进入“好友反复失约”的固定场景，也可从空白草稿创建友情、恋爱关系、人情边界或职场沟通场景。不同模板提供对应的填写提示，切换时保留各自草稿。场景包含双方身份、关系、对方立场、用户目标、担忧、禁止内容、沟通风格、模拟强度和模式。确认后可进行至多 15 轮文字对话；进入对话后仍可编辑场景并从新设定开始一段新对话。模型回复包含可见情绪、冲突动作、状态变化建议和转折点信号；服务端校验格式并限制单轮状态变化。
+注册或登录后，首页可直接进入“好友反复失约”的固定场景，也可从空白草稿创建友情、恋爱关系、人情边界或职场沟通场景。不同模板提供对应的填写提示，切换时保留各自草稿。场景包含双方身份、关系、对方立场、用户目标、担忧、禁止内容、沟通风格、模拟强度和模式。确认后可进行至多 15 轮文字对话；进入对话后仍可编辑场景并从新设定开始一段新对话。模型回复包含可见情绪、冲突动作、状态变化建议和转折点信号；服务端校验格式并限制单轮状态变化。
 
 聊天页以角色台词为主，场景状态和操作收在可展开的情境区，不把内部情绪标签或导演信号直接展示在气泡里。服务端会为所有场景注入[自然对话提示模块](lib/voice-skill.ts)：依据关系类型调整语感，要求角色接住上一句、保持自己的立场、避免客服式套话和无端劝和。这是可复用的提示词模板与回归测试，**不是模型微调**；实际效果仍需用真实对话持续评估。
 
-结束前先进入情绪落地页，回看由用户主动打开；不做统一评分。若配置 Supabase，场景、消息、状态与转折点会保存到按用户隔离的数据库，刷新后可恢复，删除场景会级联删除相关记录。未配置 Supabase 时仅保存在当前页面内存中。
+结束前先进入情绪落地页，回看由用户主动打开；不做统一评分。Supabase 邮箱注册/登录是进入应用的前置步骤。场景、消息、状态与转折点按账号隔离保存；“历史记录”可查看最近 50 段对话，刷新页面会恢复最近一段进行中或已暂停的会话。删除场景会级联删除相关记录。首页的“简介”跳转到独立页面，正文可在 [简介页面文件](app/about/page.tsx) 中自行填写。
 
 ## 两种模型接入方式
+
+先注册或登录 ERIS 账号，再选择下列对话接入方式。ERIS 登录账号负责个人历史归属；固定测试账号和暗号只负责使用项目方的 DeepSeek 额度，两者不是同一个账号。
 
 | 入口 | 使用方式 | 费用与质量控制 |
 |---|---|---|
@@ -34,7 +36,7 @@ ERIS 是一款面向情绪表达、关系冲突与困难沟通的 AI 情境模�
 
 - Next.js App Router、React、TypeScript、原生 CSS。
 - Route Handler 服务端调用 DeepSeek；Zod 校验用户输入与模型 JSON 输出；纯函数限制情境状态变化。
-- Supabase PostgreSQL、匿名 Auth 与 RLS（可选配置；用于受控测试）；数据库原子计数限制项目方测试额度。
+- Supabase PostgreSQL、邮箱密码 Auth 与 RLS（运行必需）；数据库原子计数限制项目方测试额度。
 - Vitest 单元测试；旧版 Streamlit/Python 原型保留在仓库，便于对照验证。
 
 ## 本地运行
@@ -44,12 +46,19 @@ ERIS 是一款面向情绪表达、关系冲突与困难沟通的 AI 情境模�
 ```bash
 npm ci
 cp .env.example .env.local
+```
+
+先在自己的 Supabase 项目中启用邮箱密码登录，并依次在 SQL Editor 执行 [初始数据库迁移](supabase/migrations/202611050001_initial.sql) 与 [测试额度迁移](supabase/migrations/202611050002_quota.sql)。从项目设置中取得 URL 和 publishable key，写入 .env.local 的 NEXT_PUBLIC_SUPABASE_URL、NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY。邮箱确认开启时，注册后需要点击验证邮件；请在 Supabase Auth 的 URL 配置中允许本地地址 http://localhost:3000。这里的 publishable key 可以出现在浏览器中；**绝不能填 service_role/secret key**。
+
+若使用自己的 DeepSeek Key，不必填写服务端 DEEPSEEK_API_KEY；登录后在对话页选择“自行配置 DeepSeek API”。若启用固定测试账号，在 .env.local 中设置 ERIS_TEST_USERNAME、ERIS_TEST_PASSPHRASE、DEEPSEEK_API_KEY，按需设置 DEEPSEEK_MODEL 和 ERIS_TEST_DAILY_LIMIT。不要把真实密钥或暗号提交到 GitHub。生产环境若要开放固定测试账号，还须在服务端设置 SUPABASE_URL 与 SUPABASE_SECRET_KEY；secret key 只能放在服务端，不能加 NEXT_PUBLIC_ 前缀。
+
+完成配置后启动：
+
+```bash
 npm run dev
 ```
 
-打开 `http://localhost:3000`。若只用自己的 DeepSeek Key，可不填写服务端 `DEEPSEEK_API_KEY`。若要启用固定测试账号，在 `.env.local` 中设置 `ERIS_TEST_USERNAME`、`ERIS_TEST_PASSPHRASE`、`DEEPSEEK_API_KEY`，按需设置 `DEEPSEEK_MODEL` 和 `ERIS_TEST_DAILY_LIMIT`。不要把真实密钥或暗号提交到 GitHub。
-
-需要保存和恢复对话时，创建自己的 Supabase 项目，在 Supabase Auth 中启用匿名登录，并依次执行 [初始数据库迁移](supabase/migrations/202611050001_initial.sql) 和 [测试额度迁移](supabase/migrations/202611050002_quota.sql)。随后将项目 URL 和 publishable key 写入 `.env.local` 的 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`。这里的 publishable key 可以出现在浏览器中；**绝不能填 service_role/secret key**。匿名账号依赖当前浏览器的登录信息，清理浏览器数据后可能无法找回原有记录。生产环境若要开放固定测试账号，还须在服务端设置 `SUPABASE_URL` 与 `SUPABASE_SECRET_KEY`；secret key 只能放在服务端，不能加 `NEXT_PUBLIC_` 前缀。
+打开 http://localhost:3000，先注册或登录，再进入场景。旧版匿名会话不会自动迁入新账号；若之前用匿名身份保存过记录，请先保留原浏览器数据，不要在确认迁移方案前清理。
 
 验证代码：
 
