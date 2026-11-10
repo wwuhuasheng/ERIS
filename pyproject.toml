@@ -1,7 +1,11 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "eris"
 version = "0.1.0"
-description = "以文字互动为核心的虚拟角色恋爱模拟器"
+description = "AI 情境模拟与困难沟通对话原型"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -10,7 +14,9 @@ dependencies = [
   "streamlit>=1.40.0,<2.0.0",
 ]
 
+[tool.setuptools]
+py-modules = ["app", "access"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-

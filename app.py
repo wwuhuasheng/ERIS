@@ -1,14 +1,15 @@
-"""ERIS 的第一条可运行对话链路。"""
+"""ERIS chat prototype with a gated test account and a bring-your-own-API path."""
 
 from __future__ import annotations
 
 import logging
-import os
 from typing import TypedDict
 
 import streamlit as st
 from dotenv import load_dotenv
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI, RateLimitError
+
+from access import DEFAULT_MODEL, DailyTestBudget, load_test_account, valid_test_login
 
 
 load_dotenv()
@@ -20,8 +21,10 @@ logging.basicConfig(
 logger = logging.getLogger("eris")
 
 APP_TITLE = "ERIS · 初见"
-DEFAULT_MODEL = "gpt-6-astra"
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 MAX_CONTEXT_MESSAGES = 12
+TEST_MODE = "测试账号"
+OWN_API_MODE = "自行配置 API"
 
 
 class ChatMessage(TypedDict):
@@ -45,7 +48,7 @@ OPENING_MESSAGE = (
 
 
 def build_instructions() -> str:
-    """将临时角色设定整理成稳定、可读的模型指令。"""
+    """Turn the temporary character profile into stable model instructions."""
     return f"""
 你正在扮演一个完全虚构的角色。始终使用中文，并保持角色一致。
 
@@ -66,18 +69,24 @@ def build_instructions() -> str:
 
 
 def recent_context(messages: list[ChatMessage]) -> list[ChatMessage]:
-    """只向模型发送最近若干条消息，避免上下文无限增长。"""
+    """Bound context size so requests do not grow indefinitely."""
     return messages[-MAX_CONTEXT_MESSAGES:]
 
 
 def generate_reply(messages: list[ChatMessage], api_key: str, model: str) -> str:
-    """调用 Responses API；失败由界面层转换为用户可理解的提示。"""
-    client = OpenAI(api_key=api_key, timeout=30.0, max_retries=1)
+    """Only the server-side Python process creates the model client."""
+    client = OpenAI(
+        api_key=api_key,
+        base_url=DEEPSEEK_BASE_URL,
+        timeout=30.0,
+        max_retries=1,
+    )
     response = client.responses.create(
         model=model,
         instructions=build_instructions(),
         input=recent_context(messages),
         max_output_tokens=600,
+        reasoning={"effort": "none"},
     )
     reply = response.output_text.strip()
     if not reply:
@@ -86,7 +95,7 @@ def generate_reply(messages: list[ChatMessage], api_key: str, model: str) -> str
 
 
 def friendly_error(error: Exception) -> str:
-    """隐藏内部细节，给用户保留明确的恢复动作。"""
+    """Show a recovery hint without exposing credentials or private request data."""
     if isinstance(error, APITimeoutError):
         return "角色暂时没有回应（请求超时）。你的消息还在，可以稍后重试。"
     if isinstance(error, RateLimitError):
@@ -96,6 +105,91 @@ def friendly_error(error: Exception) -> str:
     if isinstance(error, APIStatusError):
         return f"模型服务返回错误（状态码 {error.status_code}）。你的消息没有丢失。"
     return "生成回复时出现意外问题。你的消息没有丢失，请稍后重试。"
+
+
+def reset_conversation() -> None:
+    st.session_state.messages = [ChatMessage(role="assistant", content=OPENING_MESSAGE)]
+    st.session_state.last_error = None
+
+
+def change_connection_mode() -> None:
+    reset_conversation()
+    st.session_state.test_authenticated = False
+
+
+def clear_own_api() -> None:
+    st.session_state.user_api_key = ""
+    st.session_state.user_model = DEFAULT_MODEL
+    reset_conversation()
+
+
+@st.cache_resource
+def test_budget() -> DailyTestBudget:
+    """Share one process-local owner-key budget across browser sessions."""
+    return DailyTestBudget()
+
+
+def connection_sidebar() -> tuple[str, str, str, bool]:
+    """Return (mode, key, model, quota_exhausted) without storing the owner key in session."""
+    api_key = ""
+    model = DEFAULT_MODEL
+    quota_exhausted = False
+    mode = st.radio(
+        "连接方式",
+        [TEST_MODE, OWN_API_MODE],
+        key="connection_mode",
+        on_change=change_connection_mode,
+    )
+
+    if mode == TEST_MODE:
+        config = load_test_account()
+        if config is None:
+            st.warning("测试入口尚未开放。管理员需在服务端配置测试账号、口令和 API。")
+        elif not st.session_state.get("test_authenticated", False):
+            with st.form("test_login", clear_on_submit=True):
+                username = st.text_input("测试账号", max_chars=100)
+                passphrase = st.text_input("测试口令（暗号）", type="password", max_chars=200)
+                submitted = st.form_submit_button("进入测试版", use_container_width=True)
+            if submitted:
+                if valid_test_login(username, passphrase, config):
+                    st.session_state.test_authenticated = True
+                    reset_conversation()
+                    st.rerun()
+                else:
+                    st.error("账号或口令不正确。")
+        else:
+            api_key = config.api_key
+            model = config.model
+            st.success("已进入测试版")
+            st.caption(f"使用项目方模型：{model}")
+            session_used = st.session_state.get("test_requests", 0)
+            session_remaining = max(0, config.session_limit - session_used)
+            daily_remaining = test_budget().remaining(config.daily_limit)
+            quota_exhausted = session_remaining == 0 or daily_remaining == 0
+            st.caption(
+                f"本次会话剩余 {session_remaining} 次；服务端今日剩余 {daily_remaining} 次。"
+            )
+            if quota_exhausted:
+                st.warning("测试额度已用完。你仍可切换到自行配置 API。")
+            if st.button("退出测试账号", use_container_width=True):
+                st.session_state.test_authenticated = False
+                reset_conversation()
+                st.rerun()
+    else:
+        st.caption("当前支持 DeepSeek API；密钥只保留在本次浏览器会话。")
+        api_key = st.text_input(
+            "你的 DeepSeek API Key", type="password", key="user_api_key", max_chars=256
+        ).strip()
+        if "user_model" not in st.session_state:
+            st.session_state.user_model = DEFAULT_MODEL
+        model = st.text_input("模型名称", key="user_model", max_chars=100).strip()
+        st.button("清除我的 API 配置", on_click=clear_own_api, use_container_width=True)
+        if api_key and model:
+            st.success("已使用你的 API 配置")
+        elif api_key:
+            st.warning("请填写模型名称。")
+
+    return mode, api_key, model, quota_exhausted
 
 
 def render_page() -> None:
@@ -136,22 +230,20 @@ def render_page() -> None:
         unsafe_allow_html=True,
     )
 
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    model = os.getenv("OPENAI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    if "messages" not in st.session_state:
+        reset_conversation()
+    if "test_requests" not in st.session_state:
+        st.session_state.test_requests = 0
 
     with st.sidebar:
         st.header(CHARACTER["name"])
         st.caption("虚构角色 · AI 生成")
         st.write(CHARACTER["identity"])
         st.divider()
-        st.caption(f"模型：{model}")
-        if api_key:
-            st.success("API 已配置", icon="✓")
-        else:
-            st.warning("尚未配置 OPENAI_API_KEY", icon="⚠️")
+        mode, api_key, model, quota_exhausted = connection_sidebar()
+        st.divider()
         if st.button("重新开始对话", use_container_width=True):
-            st.session_state.messages = [ChatMessage(role="assistant", content=OPENING_MESSAGE)]
-            st.session_state.last_error = None
+            reset_conversation()
             st.rerun()
 
     st.markdown(
@@ -164,34 +256,44 @@ def render_page() -> None:
         unsafe_allow_html=True,
     )
 
-    if "messages" not in st.session_state:
-        st.session_state.messages = [ChatMessage(role="assistant", content=OPENING_MESSAGE)]
-    if "last_error" not in st.session_state:
-        st.session_state.last_error = None
-
     for message in st.session_state.messages:
-        avatar = "🌙" if message["role"] == "assistant" else "你"
+        avatar = "🌙" if message["role"] == "assistant" else "👤"
         with st.chat_message(message["role"], avatar=avatar):
             st.markdown(message["content"])
 
     if st.session_state.last_error:
         st.error(st.session_state.last_error)
-
     if not api_key:
-        st.info("复制 `.env.example` 为 `.env`，填入 API Key 后重新启动应用即可开始。")
+        if mode == TEST_MODE:
+            st.info("使用测试账号和口令进入，或切换到自行配置 API。")
+        else:
+            st.info("在侧边栏填写你自己的 DeepSeek API Key 和模型名称后即可开始。")
 
     user_input = st.chat_input(
         f"对{CHARACTER['name']}说点什么…",
-        disabled=not api_key,
+        disabled=not api_key or not model or quota_exhausted,
         max_chars=2000,
     )
     if not user_input:
         return
 
+    if mode == TEST_MODE:
+        config = load_test_account()
+        if config is None or not st.session_state.get("test_authenticated", False):
+            st.error("测试连接已失效，请重新登录。")
+            return
+        if st.session_state.test_requests >= config.session_limit:
+            st.error("本次会话的测试额度已用完。")
+            return
+        if not test_budget().reserve(config.daily_limit):
+            st.error("今日测试额度已用完。")
+            return
+        st.session_state.test_requests += 1
+
     user_message = ChatMessage(role="user", content=user_input.strip())
     st.session_state.messages.append(user_message)
     st.session_state.last_error = None
-    with st.chat_message("user", avatar="你"):
+    with st.chat_message("user", avatar="👤"):
         st.markdown(user_message["content"])
 
     try:
@@ -201,15 +303,14 @@ def render_page() -> None:
             st.markdown(reply)
         st.session_state.messages.append(ChatMessage(role="assistant", content=reply))
         logger.info(
-            "response_generated model=%s context_messages=%d",
+            "response_generated mode=%s model=%s context_messages=%d",
+            mode,
             model,
             len(recent_context(st.session_state.messages)),
         )
-    except Exception as error:  # Streamlit 的交互边界需要把 SDK 错误统一转换为 UI 提示
+    except Exception as error:
         trace_id = getattr(error, "request_id", None) or "unavailable"
-        logger.exception(
-            "response_failed request_id=%s error_type=%s", trace_id, type(error).__name__
-        )
+        logger.error("response_failed request_id=%s error_type=%s", trace_id, type(error).__name__)
         st.session_state.last_error = friendly_error(error)
         st.error(st.session_state.last_error)
 
