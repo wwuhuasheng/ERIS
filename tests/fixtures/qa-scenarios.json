@@ -1,0 +1,110 @@
+[
+  {
+    "id": "relative-request",
+    "scenario": {
+      "template": "boundary", "title": "拒绝亲戚的不合理请求",
+      "background": "亲戚又让我帮忙处理一件耗时的事。此前我已经答应过几次，但这次自己的工作和生活安排都很满。",
+      "userRole": "想拒绝的亲戚", "otherRole": "提出请求的亲戚", "relationship": "常有往来的亲戚",
+      "otherPosition": "以前你都帮过忙，这次也应该帮一次。", "userGoal": "清楚表达这次不能帮忙。",
+      "userConcern": "怕拒绝后被说不讲情面", "unsaidWords": "我的时间也需要被尊重。", "excludedTopics": "",
+      "style": "direct", "intensity": 2, "mode": "confront"
+    },
+    "opening": "这次我真的抽不出时间，不能再帮你了。"
+  },
+  {
+    "id": "old-friend-grievance",
+    "scenario": {
+      "template": "friend", "title": "朋友间积累的不满",
+      "background": "我和多年好友最近联系少了。过去几次见面，他总在最后一刻改变安排，我一直没好好说过自己的失望。",
+      "userRole": "想说出不满的朋友", "otherRole": "经常临时改约的朋友", "relationship": "相识多年的好友",
+      "otherPosition": "最近确实很忙，但不是故意不重视友谊。", "userGoal": "说明反复改约造成的失望。",
+      "userConcern": "怕说出来后更疏远", "unsaidWords": "别总让我最后一个知道。", "excludedTopics": "",
+      "style": "defensive", "intensity": 2, "mode": "confront"
+    },
+    "opening": "这几次你总是临时改约，我其实一直有点难过。"
+  },
+  {
+    "id": "confession",
+    "scenario": {
+      "template": "relationship", "title": "向喜欢的人表达真实想法",
+      "background": "我和对方认识半年，最近相处亲近，但从未明确说过彼此的期待。我想坦白自己的好感，也知道对方可能有不同想法。",
+      "userRole": "准备表达好感的人", "otherRole": "尚未表明心意的朋友", "relationship": "认识半年的朋友",
+      "otherPosition": "珍惜现在的相处，但还不确定是否想进入恋爱关系。", "userGoal": "坦诚说出好感并听见对方真实想法。",
+      "userConcern": "怕让对方有压力", "unsaidWords": "我对你的在意不只是朋友。", "excludedTopics": "",
+      "style": "sensitive", "intensity": 1, "mode": "vent"
+    },
+    "opening": "我想认真告诉你，我对你的感觉已经不只是朋友了。"
+  },
+  {
+    "id": "apology",
+    "scenario": {
+      "template": "relationship", "title": "为过去的伤害道歉",
+      "background": "几个月前我在一次争执中说了重话，对方因此疏远我。我们今天终于愿意坐下来谈谈当时发生的事。",
+      "userRole": "准备道歉的人", "otherRole": "曾被重话伤害的人", "relationship": "曾经亲近的伴侣",
+      "otherPosition": "愿意听解释，但不想被一句道歉要求立刻原谅。", "userGoal": "承担自己说重话的责任。",
+      "userConcern": "怕对方不愿意再听", "unsaidWords": "那天我说的话伤害了你。", "excludedTopics": "",
+      "style": "sensitive", "intensity": 2, "mode": "confront"
+    },
+    "opening": "那天我说的话很伤人，对不起。我不想把责任推给你。"
+  },
+  {
+    "id": "interview-failure",
+    "scenario": {
+      "template": "work", "title": "面试中解释项目失败",
+      "background": "面试官要求我介绍一个没有达到预期的项目。我负责其中的排期和协调，最终延期了两周，也从中调整了工作方式。",
+      "userRole": "正在面试的求职者", "otherRole": "追问项目细节的面试官", "relationship": "求职者和面试官",
+      "otherPosition": "希望听到具体责任、决策依据和改进，而不是笼统归因。", "userGoal": "诚实解释失败原因和自己的改进。",
+      "userConcern": "怕被认为能力不足", "unsaidWords": "我确实低估了协调成本。", "excludedTopics": "",
+      "style": "direct", "intensity": 2, "mode": "confront"
+    },
+    "opening": "那个项目延期了两周，我负责的排期判断确实有问题。"
+  },
+  {
+    "id": "interview-followups",
+    "scenario": {
+      "template": "work", "title": "面对面试官连续追问",
+      "background": "面试官刚问完项目延期原因，又继续追问我当时的判断依据、是否及时上报风险以及如何分配责任。",
+      "userRole": "需要解释决策的求职者", "otherRole": "连续追问的面试官", "relationship": "求职者和面试官",
+      "otherPosition": "不接受空泛答案，需要数字、时间节点和个人负责部分。", "userGoal": "在压力下清楚说明决策过程。",
+      "userConcern": "怕被追问时慌乱", "unsaidWords": "我需要一点时间把过程讲清楚。", "excludedTopics": "",
+      "style": "direct", "intensity": 3, "mode": "confront"
+    },
+    "opening": "我当时根据前两周的数据判断可以按期完成，但没有及时把依赖风险上报。"
+  },
+  {
+    "id": "mentor-delay",
+    "scenario": {
+      "template": "work", "title": "向导师汇报进度不足",
+      "background": "我答应导师本周完成一份研究原型，但目前只完成了资料整理和部分实验，距离原定进度还有差距。",
+      "userRole": "需要汇报进度的学生", "otherRole": "关注研究进展的导师", "relationship": "研究生和导师",
+      "otherPosition": "希望尽早知道阻碍，避免临近截止日期才发现问题。", "userGoal": "诚实说明进度并讨论调整计划。",
+      "userConcern": "怕导师失望", "unsaidWords": "我需要更明确的优先级。", "excludedTopics": "",
+      "style": "direct", "intensity": 2, "mode": "confront"
+    },
+    "opening": "这周原型没有按计划完成，我想先把已经做的和卡住的地方说明白。"
+  },
+  {
+    "id": "mentor-direction",
+    "scenario": {
+      "template": "work", "title": "请求导师明确下一步方向",
+      "background": "研究项目同时有三个可能方向，我已经分别尝试，但时间有限。导师此前给过一些建议，仍未明确本阶段最重要的交付。",
+      "userRole": "需要明确重点的学生", "otherRole": "指导项目的导师", "relationship": "研究生和导师",
+      "otherPosition": "希望学生先提出自己的判断，而不是等一个标准答案。", "userGoal": "确认下一阶段的优先级与交付标准。",
+      "userConcern": "怕显得缺乏独立性", "unsaidWords": "我需要知道先做哪一件。", "excludedTopics": "",
+      "style": "avoidant", "intensity": 1, "mode": "confront"
+    },
+    "opening": "我比较了三个方向，倾向先做第二个，但想和您确认本阶段最看重什么。"
+  },
+  {
+    "id": "colleague-boundary",
+    "scenario": {
+      "template": "work", "title": "与同事讨论职责边界",
+      "background": "同事最近几次把原本由他负责的收尾工作交给我，理由是我比较熟悉流程。我因此多次加班，今天想谈清楚分工。",
+      "userRole": "想明确分工的同事", "otherRole": "经常转交收尾工作的同事", "relationship": "同一项目组的同事",
+      "otherPosition": "认为你做得快，双方互相帮忙很正常。", "userGoal": "明确各自负责的任务和临时协助的边界。",
+      "userConcern": "怕影响合作关系", "unsaidWords": "协助不等于替你负责。", "excludedTopics": "",
+      "style": "defensive", "intensity": 2, "mode": "confront"
+    },
+    "opening": "这几次收尾都是我替你做的，我想把今后的分工说清楚。"
+  }
+]

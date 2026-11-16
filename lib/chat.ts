@@ -9,8 +9,8 @@ export const messageSchema = z.object({
 });
 
 export const accessSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("test"), username: z.string().min(1).max(100), passphrase: z.string().min(1).max(200) }),
-  z.object({ kind: z.literal("own"), apiKey: z.string().min(10).max(300), model: z.enum(["deepseek-flash", "deepseek-v4-pro"]) }),
+  z.object({ kind: z.literal("test") }),
+  z.object({ kind: z.literal("own_saved"), model: z.enum(["deepseek-flash", "deepseek-v4-pro"]) }),
 ]);
 
 export const chatRequestSchema = z.object({
