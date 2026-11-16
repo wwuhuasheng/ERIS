@@ -4,6 +4,11 @@ export const templateIds = ["friend", "relationship", "boundary", "work"] as con
 export const styles = ["defensive", "avoidant", "direct", "sensitive"] as const;
 export const modes = ["vent", "confront", "continue", "perspective"] as const;
 
+export const castMemberSchema = z.object({
+  name: z.string().trim().min(1).max(20).regex(/^[^：:\n]+$/),
+  position: z.string().trim().min(2).max(120),
+});
+
 export const scenarioSchema = z.object({
   template: z.enum(templateIds),
   title: z.string().trim().min(2).max(80),
@@ -19,9 +24,22 @@ export const scenarioSchema = z.object({
   style: z.enum(styles),
   intensity: z.number().int().min(1).max(3),
   mode: z.enum(modes),
+  cast: z.array(castMemberSchema).min(2).max(3).refine((cast) => new Set(cast.map((member) => member.name)).size === cast.length, "角色姓名不能重复").optional(),
 });
 
 export type Scenario = z.infer<typeof scenarioSchema>;
+
+const castMarker = "ERIS_CAST_V1\n";
+
+export function encodeScenePosition(scenario: Scenario): string {
+  return scenario.cast?.length ? castMarker + JSON.stringify({ position: scenario.otherPosition, cast: scenario.cast }) : scenario.otherPosition;
+}
+
+export function decodeScenePosition(value: string): { position: string; cast?: Scenario["cast"] } {
+  if (!value.startsWith(castMarker)) return { position: value };
+  const parsed = z.object({ position: z.string(), cast: z.array(castMemberSchema).min(2).max(3) }).parse(JSON.parse(value.slice(castMarker.length)));
+  return { position: parsed.position, cast: parsed.cast };
+}
 
 export const fixedScenario: Scenario = {
   template: "friend",
@@ -82,5 +100,6 @@ export function toPerspectiveScenario(original: Scenario): Scenario {
     unsaidWords: "",
     style: "direct",
     mode: "perspective",
+    cast: undefined,
   };
 }
