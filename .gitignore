@@ -11,5 +11,6 @@ __pycache__/
 .DS_Store
 node_modules/
 .next/
+supabase/.temp/
 out/
 *.tsbuildinfo
