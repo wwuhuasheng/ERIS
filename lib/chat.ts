@@ -9,8 +9,8 @@ export const messageSchema = z.object({
 });
 
 export const accessSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("test"), username: z.string().min(1).max(100), passphrase: z.string().min(1).max(200) }),
-  z.object({ kind: z.literal("own"), apiKey: z.string().min(10).max(300), model: z.enum(["deepseek-flash", "deepseek-v4-pro"]) }),
+  z.object({ kind: z.literal("test") }),
+  z.object({ kind: z.literal("own_saved"), model: z.enum(["deepseek-flash", "deepseek-v4-pro"]) }),
 ]);
 
 export const chatRequestSchema = z.object({
@@ -18,6 +18,7 @@ export const chatRequestSchema = z.object({
   state: sceneStateSchema,
   messages: z.array(messageSchema).min(1).max(30),
   access: accessSchema,
+  pace: z.enum(["normal", "closing"]).optional(),
 });
 
 export const modelReplySchema = z.object({
@@ -36,3 +37,7 @@ export const modelReplySchema = z.object({
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
 export type Message = z.infer<typeof messageSchema>;
 export type ModelReply = z.infer<typeof modelReplySchema>;
+
+export function accessForAccount(isTestAccount: boolean, model: "deepseek-flash" | "deepseek-v4-pro"): ChatRequest["access"] {
+  return isTestAccount ? { kind: "test" } : { kind: "own_saved", model };
+}

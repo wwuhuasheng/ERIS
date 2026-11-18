@@ -4,6 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "ERIS · 给未说出口的话一个空间",
   description: "与有立场的虚构角色练习困难对话。模拟不代表现实人物的真实想法。",
+  icons: { icon: "/eris-icon.svg", apple: "/apple-icon.png" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
