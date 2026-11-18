@@ -6,6 +6,8 @@ import { generateReply } from "@/lib/deepseek";
 import { applyStateChange, stateDescription } from "@/lib/state";
 import { consumeTestQuota } from "@/lib/rate-limit";
 import { readSavedApiKey } from "@/lib/saved-api-key";
+import { modelVisibleText, stickerImage } from "@/lib/chat-media";
+import { extremeLanguage } from "@/lib/escalation-cue";
 
 export const runtime = "nodejs";
 
@@ -36,14 +38,14 @@ export async function POST(request: Request) {
 
   try {
     const rawBody = await request.text();
-    if (rawBody.length > 50000) return NextResponse.json({ error: "请求内容过长。" }, { status: 413 });
+    if (rawBody.length > 100000) return NextResponse.json({ error: "请求内容过长。" }, { status: 413 });
     const body = chatRequestSchema.parse(JSON.parse(rawBody));
     const repeatedRole = body.messages.some((message, index) => index > 0 && message.role === body.messages[index - 1].role);
-    if (body.messages.at(-1)?.role !== "user" || body.messages.at(-1)!.content.length > 2000 || body.messages.filter((m) => m.role === "user").length > 15 || repeatedRole) {
+    if (body.messages.at(-1)?.role !== "user" || (body.messages.at(-1)!.content.length > 2000 && !stickerImage(body.messages.at(-1)!.content)) || body.messages.filter((m) => m.role === "user").length > 15 || repeatedRole) {
       return NextResponse.json({ error: "对话顺序或轮数无效。" }, { status: 400 });
     }
     const latest = body.messages.at(-1)!.content;
-    if (isHighRisk(latest)) {
+    if (isHighRisk(latest) || extremeLanguage(latest)) {
       return NextResponse.json({ safety: true, message: "我们先暂停模拟。如果你或他人正处于危险，请立刻联系当地紧急服务或身边可信任的人；若有自伤念头，请尽快寻求专业支持。你可以直接结束这段对话。" });
     }
 
@@ -54,7 +56,7 @@ export async function POST(request: Request) {
       key = process.env.DEEPSEEK_API_KEY || "";
       model = process.env.DEEPSEEK_MODEL || "deepseek-flash";
       if (!key) return NextResponse.json({ error: "测试入口尚未配置，请使用自己的 DeepSeek API Key。" }, { status: 503 });
-      if (!(await consumeTestQuota())) return NextResponse.json({ error: "今日测试额度已用完，请明天再试或使用自己的 API。" }, { status: 429 });
+      if (!(await consumeTestQuota())) return NextResponse.json({ error: "今日测试额度已用完，请明天再试。" }, { status: 429 });
     } else {
       const savedKey = await readSavedApiKey(ownerId);
       if (!savedKey) return NextResponse.json({ error: "请先在对话接入中保存你的 DeepSeek API Key。" }, { status: 409 });
@@ -63,7 +65,8 @@ export async function POST(request: Request) {
     }
 
     const started = Date.now();
-    const result = await generateReply(body, key, model);
+    const modelRequest = { ...body, messages: body.messages.map((message) => ({ ...message, content: modelVisibleText(message.content) })) };
+    const result = await generateReply(modelRequest, key, model);
     const state = applyStateChange(body.state, result.reply.state_change);
     console.info(JSON.stringify({ event: "chat_complete", template: body.scenario.template, mode: body.scenario.mode, duration_ms: Date.now() - started, repaired: result.repaired, perspective_repaired: result.perspectiveRepaired, turning_point: result.reply.turning_point_candidate }));
     return NextResponse.json({ ...result.reply, state, stateDescription: stateDescription(state) });

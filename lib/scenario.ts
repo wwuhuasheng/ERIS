@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validCompactImage } from "./chat-media";
 
 export const templateIds = ["friend", "relationship", "boundary", "work"] as const;
 export const styles = ["defensive", "avoidant", "direct", "sensitive"] as const;
@@ -25,17 +26,27 @@ export const scenarioSchema = z.object({
   intensity: z.number().int().min(1).max(3),
   mode: z.enum(modes),
   cast: z.array(castMemberSchema).min(2).max(3).refine((cast) => new Set(cast.map((member) => member.name)).size === cast.length, "角色姓名不能重复").optional(),
+  memoryNote: z.string().trim().max(1000).optional(),
+  memoryEnabled: z.boolean().optional(),
+  userAvatar: z.string().max(3000).refine((value) => validCompactImage(value), "头像图片格式无效").optional(),
+  otherAvatar: z.string().max(3000).refine((value) => validCompactImage(value), "头像图片格式无效").optional(),
 });
 
 export type Scenario = z.infer<typeof scenarioSchema>;
 
 const castMarker = "ERIS_CAST_V1\n";
+const sceneMarker = "ERIS_SCENE_V2\n";
+const mediaMarker = "ERIS_SCENE_V3\n";
 
 export function encodeScenePosition(scenario: Scenario): string {
+  if (scenario.userAvatar || scenario.otherAvatar) return mediaMarker + JSON.stringify({ position: scenario.otherPosition, cast: scenario.cast, memoryNote: scenario.memoryNote || "", memoryEnabled: Boolean(scenario.memoryEnabled), userAvatar: scenario.userAvatar, otherAvatar: scenario.otherAvatar });
+  if (scenario.memoryNote?.trim() || scenario.memoryEnabled) return sceneMarker + JSON.stringify({ position: scenario.otherPosition, cast: scenario.cast, memoryNote: scenario.memoryNote || "", memoryEnabled: Boolean(scenario.memoryEnabled) });
   return scenario.cast?.length ? castMarker + JSON.stringify({ position: scenario.otherPosition, cast: scenario.cast }) : scenario.otherPosition;
 }
 
-export function decodeScenePosition(value: string): { position: string; cast?: Scenario["cast"] } {
+export function decodeScenePosition(value: string): { position: string; cast?: Scenario["cast"]; memoryNote?: string; memoryEnabled?: boolean; userAvatar?: string; otherAvatar?: string } {
+  if (value.startsWith(mediaMarker)) return z.object({ position: z.string(), cast: z.array(castMemberSchema).min(2).max(3).optional(), memoryNote: z.string().max(1000), memoryEnabled: z.boolean(), userAvatar: z.string().max(3000).refine(validCompactImage).optional(), otherAvatar: z.string().max(3000).refine(validCompactImage).optional() }).parse(JSON.parse(value.slice(mediaMarker.length)));
+  if (value.startsWith(sceneMarker)) return z.object({ position: z.string(), cast: z.array(castMemberSchema).min(2).max(3).optional(), memoryNote: z.string().max(1000), memoryEnabled: z.boolean() }).parse(JSON.parse(value.slice(sceneMarker.length)));
   if (!value.startsWith(castMarker)) return { position: value };
   const parsed = z.object({ position: z.string(), cast: z.array(castMemberSchema).min(2).max(3) }).parse(JSON.parse(value.slice(castMarker.length)));
   return { position: parsed.position, cast: parsed.cast };
@@ -48,7 +59,7 @@ export const fixedScenario: Scenario = {
   userRole: "被多次临时取消约定的朋友",
   otherRole: "好友林澈",
   relationship: "相识多年的好友，最近联系渐少",
-  otherPosition: "我不是故意不重视你，只是最近真的抽不开身；我不想每次失约都被认定为不在乎。",
+  otherPosition: "我知道临时取消伤到你，但我不认同每次失约都等于不在乎；我也不愿一直被拿过去的事追着算账。",
   userGoal: "说清楚一次又一次失约带来的伤害，弄明白彼此还愿不愿意维护关系。",
   userConcern: "怕表达不满后对方彻底疏远。",
   unsaidWords: "我不是要你随叫随到，我只是希望你别总让我最后一个知道计划变了。",
@@ -101,5 +112,9 @@ export function toPerspectiveScenario(original: Scenario): Scenario {
     style: "direct",
     mode: "perspective",
     cast: undefined,
+    memoryNote: "",
+    memoryEnabled: false,
+    userAvatar: original.otherAvatar,
+    otherAvatar: original.userAvatar,
   };
 }

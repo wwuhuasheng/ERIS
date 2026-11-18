@@ -1,4 +1,5 @@
 import type { Message } from "./chat";
+import { displayMessageText } from "./chat-media";
 
 export type ExpressionObservation = {
   turns: number;
@@ -10,7 +11,7 @@ export type ExpressionObservation = {
 };
 
 export function observeExpression(messages: Pick<Message, "role" | "content">[]): ExpressionObservation {
-  const spoken = messages.filter((message) => message.role === "user").map((message) => message.content.trim()).filter(Boolean);
+  const spoken = messages.filter((message) => message.role === "user").map((message) => displayMessageText(message.content).trim()).filter(Boolean);
   const normalized = spoken.map((line) => line.replace(/[\s，。！？,.!?；;]+/g, "").toLocaleLowerCase());
   const seen = new Set<string>();
   let repeatedLines = 0;

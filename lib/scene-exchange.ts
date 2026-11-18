@@ -4,7 +4,7 @@ import { scenarioSchema, type Scenario } from "./scenario";
 const exchangeSchema = z.object({ version: z.literal(1), scenario: scenarioSchema });
 
 export function exportScene(scenario: Scenario): string {
-  const safe = scenarioSchema.parse({ ...scenario, userConcern: "", unsaidWords: "" });
+  const safe = scenarioSchema.parse({ ...scenario, userConcern: "", unsaidWords: "", memoryNote: "", memoryEnabled: false, userAvatar: undefined, otherAvatar: undefined });
   return JSON.stringify({ version: 1, scenario: safe }, null, 2);
 }
 

@@ -54,3 +54,29 @@ describe("phone-form registration", () => {
     expect((await POST(request("13800138002"))).status).toBe(409);
   });
 });
+
+describe("creator registration", () => {
+  it("creates a separate account with server-owned creator role", async () => {
+    vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SECRET_KEY", "server-secret");
+    admin.createUser.mockResolvedValue({ data: { user: { id: "creator-user" } }, error: null });
+    const response = await POST(new Request("http://localhost/api/auth/register", {
+      method: "POST", body: JSON.stringify({ kind: "creator", username: "StoryMaker", password: "correct-horse-password" }),
+    }));
+    expect(response.status).toBe(201);
+    expect(admin.createUser).toHaveBeenCalledWith({
+      email: "c-storymaker@accounts.eris.invalid", password: "correct-horse-password", email_confirm: true,
+      user_metadata: { creator_name: "storymaker" }, app_metadata: { eris_account_type: "creator" },
+    });
+  });
+
+  it("does not allow a test username to impersonate the creator namespace", async () => {
+    vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SECRET_KEY", "server-secret");
+    const response = await POST(new Request("http://localhost/api/auth/register", {
+      method: "POST", body: JSON.stringify({ kind: "creator", username: "20070502", password: "correct-horse-password" }),
+    }));
+    expect(response.status).toBe(400);
+    expect(admin.createUser).not.toHaveBeenCalled();
+  });
+});

@@ -58,11 +58,41 @@ describe("DeepSeek response boundary", () => {
     expect(body.instructions).toContain("不要在 reply 中透露");
     expect(body.instructions).toContain("不冒充某位现实人物");
     expect(body.instructions).toContain("characterRole 就是你");
+    expect(body.instructions).toContain("保持当前对话节奏");
     expect(body.input[0].content).toContain(fixedScenario.background);
+    expect(body.input[0].content).not.toContain("累积委屈");
+    expect(body.input[0].content).not.toContain("觉得自己的困难没有被看见");
+    expect(body.instructions).not.toContain("今晚真的走不开");
     expect(body.input[0].content).toContain('"backgroundNarrator":"userRole"');
     expect(body.input[0].content).not.toContain(fixedScenario.unsaidWords);
     expect(JSON.parse(body.input[1].content).dialogue[0]).toEqual({ speaker: "userRole", text: "你又临时取消，我真的很失望。" });
     expect(JSON.parse(body.input[1].content).nextSpeaker).toBe("characterRole");
+  });
+
+  it("honors a user-selected gradual ending without forcing reconciliation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ output_text: valid }) });
+    vi.stubGlobal("fetch", fetchMock);
+    await generateReply({ ...request, pace: "closing" }, "key", "deepseek-flash");
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.instructions).toContain("用户选择逐渐收尾");
+    expect(body.instructions).toContain("不要突然和解");
+  });
+  it("gives conflict continuation its own behavior instead of replaying the opening", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ output_text: valid }) });
+    vi.stubGlobal("fetch", fetchMock);
+    await generateReply({ ...request, scenario: { ...fixedScenario, mode: "continue" } }, "key", "deepseek-flash");
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.instructions).toContain("从中断处继续");
+    expect(body.instructions).toContain("不重演开场");
+  });
+  it("only shares explicitly enabled personal memory with the simulated character", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ output_text: valid }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const scenario = { ...fixedScenario, memoryNote: "去年曾为这件事争论", memoryEnabled: false };
+    await generateReply({ ...request, scenario }, "key", "deepseek-flash");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).input[0].content).not.toContain(scenario.memoryNote);
+    await generateReply({ ...request, scenario: { ...scenario, memoryEnabled: true } }, "key", "deepseek-flash");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).input[0].content).toContain(scenario.memoryNote);
   });
 
   it("anchors the original narrator when the user swaps roles", async () => {
@@ -130,6 +160,28 @@ describe("DeepSeek response boundary", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(JSON.parse(fetchMock.mock.calls[1][1].body).instructions).toContain("重复了前文台词");
     expect(JSON.parse(JSON.parse(fetchMock.mock.calls[0][1].body).input[1].content).dialogue[1].speaker).toBe("characterRole");
+  });
+
+  it("moves past a repeated generic excuse without inventing a new event", async () => {
+    const withHistory: ChatRequest = {
+      ...request,
+      messages: [
+        { id: crypto.randomUUID(), role: "user", content: "你为什么又改约？" },
+        { id: crypto.randomUUID(), role: "assistant", content: "我最近很忙，真的走不开。" },
+        { id: crypto.randomUUID(), role: "user", content: "你能不能早点告诉我？" },
+      ],
+    };
+    const generic = JSON.stringify({ ...JSON.parse(valid), reply: "我最近确实很忙，也不是故意的。" });
+    const specific = JSON.stringify({ ...JSON.parse(valid), reply: "我应该在知道要改约时就告诉你，不该让你等到最后。" });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ output_text: generic }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ output_text: specific }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ output_text: perspectivePass }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await generateReply(withHistory, "key", "deepseek-flash");
+    expect(result.reply.reply).toContain("告诉你");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).instructions).toContain("旧理由");
   });
 
   it("rewrites a reply that speaks from the user's side", async () => {

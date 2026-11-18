@@ -9,6 +9,8 @@ describe("natural voice prompt module", () => {
     expect(text).toContain("不要列点、写总结");
     expect(text).toContain("不冒充某位现实人物");
     expect(text).toContain("不诱导用户依赖");
+    expect(text).toContain("连用“！！”");
+    expect(text).not.toContain("今晚真的走不开");
   });
 
   it.each([

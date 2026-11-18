@@ -18,6 +18,7 @@ export const chatRequestSchema = z.object({
   state: sceneStateSchema,
   messages: z.array(messageSchema).min(1).max(30),
   access: accessSchema,
+  pace: z.enum(["normal", "closing"]).optional(),
 });
 
 export const modelReplySchema = z.object({
@@ -36,3 +37,7 @@ export const modelReplySchema = z.object({
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
 export type Message = z.infer<typeof messageSchema>;
 export type ModelReply = z.infer<typeof modelReplySchema>;
+
+export function accessForAccount(isTestAccount: boolean, model: "deepseek-flash" | "deepseek-v4-pro"): ChatRequest["access"] {
+  return isTestAccount ? { kind: "test" } : { kind: "own_saved", model };
+}

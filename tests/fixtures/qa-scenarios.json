@@ -17,7 +17,7 @@
       "template": "friend", "title": "朋友间积累的不满",
       "background": "我和多年好友最近联系少了。过去几次见面，他总在最后一刻改变安排，我一直没好好说过自己的失望。",
       "userRole": "想说出不满的朋友", "otherRole": "经常临时改约的朋友", "relationship": "相识多年的好友",
-      "otherPosition": "最近确实很忙，但不是故意不重视友谊。", "userGoal": "说明反复改约造成的失望。",
+      "otherPosition": "我以前把改约看成普通调整，不愿意每次都被认定为不重视友谊。", "userGoal": "说明反复改约造成的失望。",
       "userConcern": "怕说出来后更疏远", "unsaidWords": "别总让我最后一个知道。", "excludedTopics": "",
       "style": "defensive", "intensity": 2, "mode": "confront"
     },

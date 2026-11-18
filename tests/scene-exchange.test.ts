@@ -4,8 +4,10 @@ import { fixedScenario } from "../lib/scenario";
 
 describe("creator scene exchange", () => {
   it("round trips a scene without exporting private unsaid notes", () => {
-    const exported = exportScene(fixedScenario);
+    const exported = exportScene({ ...fixedScenario, memoryNote: "仅限我自己的私人记忆", memoryEnabled: true, userAvatar: "data:image/webp;base64,UklGRg==" });
     expect(exported).not.toContain(fixedScenario.unsaidWords);
+    expect(exported).not.toContain("仅限我自己的私人记忆");
+    expect(exported).not.toContain("UklGRg==");
     expect(importScene(exported)).toMatchObject({ title: fixedScenario.title, unsaidWords: "" });
   });
 

@@ -29,6 +29,7 @@ export type ScenarioTimelineEntry = {
 };
 
 let browserClient: SupabaseClient | null = null;
+type ErisWindow = Window & { __erisSupabaseClient?: SupabaseClient };
 
 export function persistenceConfigured(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
@@ -36,6 +37,15 @@ export function persistenceConfigured(): boolean {
 
 export function authClient(): SupabaseClient {
   if (!persistenceConfigured()) throw new Error("尚未配置 Supabase；无法注册、登录或保存历史记录。");
+  // Keep one Auth instance through Next development hot reloads. Concurrent
+  // instances sharing the same storage key can race while restoring a session.
+  if (typeof window !== "undefined") {
+    const browser = window as ErisWindow;
+    if (!browser.__erisSupabaseClient) browser.__erisSupabaseClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
+      auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true },
+    });
+    return browser.__erisSupabaseClient;
+  }
   if (!browserClient) browserClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
     auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true },
   });
@@ -61,12 +71,12 @@ function scenarioRow(value: Scenario, ownerId: string) {
 }
 
 function fromScenarioRow(row: Record<string, unknown>, mode: Scenario["mode"]): Scenario {
-  const { position, cast } = decodeScenePosition(row.other_position as string);
+  const { position, cast, memoryNote, memoryEnabled, userAvatar, otherAvatar } = decodeScenePosition(row.other_position as string);
   return {
     template: row.template_type as Scenario["template"], title: row.title as string,
     background: row.background as string, userRole: row.user_role as string,
     otherRole: row.counterpart_role as string, relationship: row.relationship as string,
-    otherPosition: position, cast, userGoal: row.user_intent as string,
+    otherPosition: position, cast, memoryNote, memoryEnabled, userAvatar, otherAvatar, userGoal: row.user_intent as string,
     userConcern: row.primary_concern as string, unsaidWords: row.unsaid_words as string,
     excludedTopics: row.excluded_topics as string, style: row.counterpart_style as Scenario["style"],
     intensity: row.intensity as number, mode,
@@ -88,6 +98,14 @@ export async function createStoredSession(scenario: Scenario): Promise<StoredSes
     throw state.error;
   }
   return { scenarioId: scene.data.id, sessionId: session.data.id, scenario, messages: [], state: initialState, status: "active" };
+}
+
+export async function saveScenarioMemory(scenarioId: string, scenario: Scenario): Promise<void> {
+  const { db, ownerId } = await identity();
+  const { data, error } = await db.from("scenarios")
+    .update({ other_position: encodeScenePosition(scenario), updated_at: new Date().toISOString() })
+    .eq("id", scenarioId).eq("owner_id", ownerId).select("id").single();
+  if (error || !data) throw error || new Error("无法保存场景记忆。");
 }
 
 export async function listStoredSessions(search = ""): Promise<StoredSessionSummary[]> {

@@ -10,8 +10,8 @@ export default function AboutPage() {
   return (
     <main className="shell">
       <header className="site-header">
-        <Link className="brand" href="/">
-          ✳ <span>ERIS</span>
+        <Link className="brand" href="/" aria-label="返回 ERIS 首页" title="返回首页">
+          <img className="brand-logo" src="/eris-logo.jpg" alt="" /><span>ERIS</span>
         </Link>
         <span className="header-note">给未说出口的话，一个可重来的空间</span>
         <span className="phase">简介</span>
@@ -20,7 +20,9 @@ export default function AboutPage() {
         <div className="eyebrow">ABOUT ERIS</div>
         <h1>简介</h1>
         <div className="about-content">
-          {/* ERIS作为一个用来完成情绪交互、发泄、复盘的网页端应用。希望在使用的过程中，可以说出没来得及说出口的话，发泄积压在心底的情绪，辅助复盘当时的情景。虽然对话的是AI，但已经尽力还原真实口吻，说不定可以在于AI对话的过程中，找到一些头绪，解开一些心结。也正是因为AI希望大家可以无所顾虑的表达自己的情绪，然后回归现实生活，好好生活，好好工作，好好上班。最后祝大家用的开心*/}
+          <p>ERIS 是一个用来完成情绪交互、发泄与复盘的网页应用。希望你在使用过程中，能说出没来得及说出口的话，释放积压在心底的情绪，也能回看当时的情景。</p>
+          <p>虽然对话的是 AI，我们仍尽力让角色用自然的口吻回应。也许在与 AI 对话的过程中，你会找到一些头绪，解开一些心结。</p>
+          <p>也正因为对话的是 AI，希望大家可以少些顾虑地表达自己的情绪，然后回到现实生活，好好生活、好好工作。最后，祝大家用得开心。</p>
         </div>
         <Link className="text-button" href="/">
           ← 返回首页
